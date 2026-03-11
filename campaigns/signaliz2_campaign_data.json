@@ -1,0 +1,34 @@
+{
+  "campaign_name": "Signaliz 2",
+  "total_leads": 91,
+  "pipeline_steps_completed": {
+    "1_company_sourcing": "Octave find_person - 10 keyword batches across tech verticals",
+    "2_contact_filtering": "Python-based CEO/Founder filtering, deduplication - 248 unique contacts",
+    "3_email_verification": "Signaliz find_and_verify_emails - 93 verified for sending",
+    "4_signal_enrichment": "Signaliz custom_ai_prompt with web search - 91 signals found",
+    "5_email_copy_generation": "Signaliz custom_ai_prompt - 91 personalized emails generated",
+    "6_instantly_campaign": "PENDING - Instantly MCP proxy down during session"
+  },
+  "signaliz_job_ids": {
+    "email_verification": "d8da0e75-3416-429d-8c9c-3bb638be3972",
+    "signal_enrichment_batch1": "946c2d5b-2d84-465b-a9c1-ff8858a6f9b3",
+    "signal_enrichment_batch2": "a53906c6-a95f-4f5d-ae87-fc14308ce37a",
+    "email_copy_batch1": "54c64614-37b4-4b3d-8791-bace15dc75ec",
+    "email_copy_batch2": "d7542225-ea2a-4523-850c-b2f62a4fa3be",
+    "signal_enrichment_full": "a86532ff-683d-40d2-9b3f-b19e760cf1a3"
+  },
+  "signal_prompt": "Find reasons and signals why the company would need signaliz.com",
+  "target_criteria": {
+    "industry": "Technology",
+    "country": "US",
+    "employees": "50-200",
+    "titles": ["CEO", "Founder", "Co-Founder", "Chief Executive Officer"]
+  },
+  "next_steps": [
+    "1. Create campaign 'Signaliz 2' in Instantly",
+    "2. Use check_job_status on email_copy job IDs to retrieve personalized subject/body",
+    "3. Add 91 leads with custom_variables: subject, body (from email copy jobs)",
+    "4. Assign sender accounts",
+    "5. Get user confirmation before activating"
+  ]
+}
