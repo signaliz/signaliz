@@ -3,7 +3,7 @@
 **ID:** `signaliz-lead-scoring`
 **Version:** 1.0.0
 **Max Batch:** 5,000 leads
-**MCP Dependencies:** Signaliz, Octave
+**MCP Dependencies:** Signaliz, Octave, Blitz API, Supabase
 
 ---
 
@@ -26,6 +26,20 @@ User says any of:
 ---
 
 ## Input Schema
+
+### Source: Supabase Table (preferred — chained from Skill 01)
+```
+ACTION: Read enriched leads from Supabase
+TOOL:   mcp__Supabase__execute_sql
+CONFIG:
+  SELECT * FROM {supabase_table}
+  WHERE email_verified = true
+  AND lead_score IS NULL
+  ORDER BY enriched_at DESC
+  LIMIT {batch_size}
+```
+
+### Source: Direct Input
 
 | Field | Required | Description |
 |---|---|---|
@@ -162,6 +176,20 @@ CONFIG:
 
 **For >25 companies:** Create a system with `custom_ai_prompt` node and run via `run_system`.
 
+### Step 3b: Blitz API Company Enrichment (backfill gaps)
+
+For companies where Signaliz signals are sparse, backfill with Blitz API:
+
+```
+ACTION: Enrich companies missing signal data
+TOOL:   Blitz API — POST /v2/enrichment/company
+CONFIG:
+  domain: "{company_domain}"
+OUTPUT: industry, employee_count, location, description, linkedin_url
+RATE: 5 RPS
+CAP: Up to 200 companies with missing data
+```
+
 ### Step 4: Octave Person-Level Qualification (top 50 contacts)
 
 For the top 50 contacts (by company ICP score) that have job titles:
@@ -213,15 +241,32 @@ TIER ASSIGNMENT:
   0-24:   ⚪ LOW — Deprioritize
 ```
 
-### Step 6: Output Ranked List
+### Step 6: Write Scores to Supabase
+
+```
+ACTION: Update leads with scores and tiers
+TOOL:   mcp__Supabase__execute_sql
+CONFIG:
+  UPDATE {supabase_table} SET
+    lead_score = {composite_score},
+    tier = '{tier}',
+    updated_at = now()
+  WHERE email = '{email}'
+BATCH: 100 updates per SQL statement
+```
+
+### Step 7: Output Ranked List
 
 Sort all leads by `composite_score` descending and output:
 
 ```
-OUTPUT FORMAT: CSV with columns:
-  rank, composite_score, tier, first_name, last_name, email, job_title,
-  company_domain, company_name, icp_score, signal_count, top_signals,
-  recommended_timing, score_reasoning, verification_status
+OUTPUT FORMAT (Supabase query + optional CSV):
+  SELECT rank() OVER (ORDER BY lead_score DESC) as rank,
+    lead_score, tier, first_name, last_name, email, job_title,
+    company_domain, company_name, company_industry
+  FROM {supabase_table}
+  WHERE lead_score IS NOT NULL
+  ORDER BY lead_score DESC
 ```
 
 ---

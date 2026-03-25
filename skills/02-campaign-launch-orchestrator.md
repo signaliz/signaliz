@@ -3,7 +3,7 @@
 **ID:** `signaliz-campaign-launcher`
 **Version:** 1.0.0
 **Max Batch:** 5,000 leads
-**MCP Dependencies:** Signaliz, Instantly, Octave
+**MCP Dependencies:** Signaliz, Instantly, Octave, Supabase
 
 ---
 
@@ -38,6 +38,19 @@ User says any of:
 | `custom_variables` | No | Key-value pairs for template variables |
 
 **Also accepts:** Campaign configuration (name, subject, body, sequence steps, timing)
+
+### Source: Supabase Table (preferred — chained from Skill 01)
+```
+ACTION: Read verified leads from Supabase
+TOOL:   mcp__Supabase__execute_sql
+CONFIG:
+  SELECT * FROM {supabase_table}
+  WHERE email_verified = true
+  AND verification_status = 'verified'
+  AND campaign_id IS NULL
+  ORDER BY lead_score DESC NULLS LAST
+  LIMIT {batch_size}
+```
 
 ---
 
@@ -238,6 +251,20 @@ IF yes:
 
 ---
 
+### Step 8: Update Supabase with Campaign Assignment
+
+```
+ACTION: Mark leads as assigned to campaign
+TOOL:   mcp__Supabase__execute_sql
+CONFIG:
+  UPDATE {supabase_table} SET
+    campaign_id = '{campaign_id}',
+    updated_at = now()
+  WHERE email IN ({loaded_emails})
+```
+
+---
+
 ## Safety Guards
 
 1. **Never activate without user confirmation**
@@ -245,3 +272,4 @@ IF yes:
 3. **Never exceed 50 emails/day/account** — Instantly hard limit
 4. **Always enable `skip_if_in_campaign: true`** — prevents duplicate sends
 5. **Always run Signaliz governance pre-flight** — blocklist + suppression
+6. **Always update Supabase** — track which leads are in which campaigns

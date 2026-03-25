@@ -3,7 +3,7 @@
 **ID:** `signaliz-list-hygiene`
 **Version:** 1.0.0
 **Max Batch:** 5,000 leads
-**MCP Dependencies:** Signaliz, Instantly
+**MCP Dependencies:** Signaliz, Instantly, Supabase
 
 ---
 
@@ -28,17 +28,30 @@ User says any of:
 
 ## Input Sources
 
-The skill accepts leads from **three entry points**:
+The skill accepts leads from **four entry points**:
 
-1. **CSV/JSON upload** — User provides file directly
-2. **Instantly campaign** — Pull leads from an existing campaign by ID
-3. **Instantly lead list** — Pull leads from a saved list by ID
+1. **Supabase table** (preferred) — Pull leads from central lead table
+2. **CSV/JSON upload** — User provides file directly
+3. **Instantly campaign** — Pull leads from an existing campaign by ID
+4. **Instantly lead list** — Pull leads from a saved list by ID
 
 ---
 
 ## Execution Steps
 
 ### Step 1: Ingest Leads
+
+**From Supabase (preferred):**
+```
+ACTION: Pull leads from Supabase table
+TOOL:   mcp__Supabase__execute_sql
+CONFIG:
+  SELECT * FROM {supabase_table}
+  WHERE {filter_criteria}
+  ORDER BY created_at DESC
+  LIMIT 5000
+OUTPUT: all_leads[]
+```
 
 **From CSV/JSON:**
 ```
@@ -221,6 +234,32 @@ Generate three output files:
 3. audit_log.csv — Full record of every action taken
    Columns: email, original_values, cleaned_values, dedup_action, blocklist_check,
             verification_result, final_disposition, sync_action
+```
+
+### Step 8b: Update Supabase
+
+```
+ACTION: Update lead statuses in Supabase
+TOOL:   mcp__Supabase__execute_sql
+CONFIG:
+  -- Mark invalid leads
+  UPDATE {supabase_table} SET
+    verification_status = '{result}',
+    email_verified = false,
+    updated_at = now()
+  WHERE email IN ({invalid_emails})
+
+  -- Mark clean leads
+  UPDATE {supabase_table} SET
+    verification_status = 'verified',
+    email_verified = true,
+    verified_at = now(),
+    updated_at = now()
+  WHERE email IN ({clean_emails})
+
+  -- Delete duplicates (keep most complete record)
+  DELETE FROM {supabase_table}
+  WHERE id IN ({duplicate_ids})
 ```
 
 ---

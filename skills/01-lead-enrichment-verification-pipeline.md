@@ -3,7 +3,7 @@
 **ID:** `signaliz-enrich-verify-pipeline`
 **Version:** 1.0.0
 **Max Batch:** 5,000 leads
-**MCP Dependencies:** Signaliz, Octave
+**MCP Dependencies:** Signaliz, Octave, Blitz API, Supabase
 
 ---
 
@@ -26,7 +26,21 @@ User says any of:
 
 ## Input Schema
 
-The pipeline accepts leads with **any combination** of these fields:
+The pipeline accepts leads from **two sources**:
+
+### Source A: Supabase Table (preferred — chained from Skill 00)
+```
+ACTION: Read leads from Supabase
+TOOL:   mcp__Supabase__execute_sql
+CONFIG:
+  SELECT * FROM {supabase_table}
+  WHERE email_verified = false
+  AND email IS NOT NULL
+  ORDER BY created_at DESC
+  LIMIT {batch_size}
+```
+
+### Source B: Direct Input (CSV, JSON, inline)
 
 | Field | Required | Description |
 |---|---|---|
@@ -123,21 +137,43 @@ LOOP:   Poll every 15 seconds until status = "completed" or "failed"
 TIMEOUT: 10 minutes per wave, then flag as stalled
 ```
 
-### Step 5: Octave Deep Enrichment (top-tier leads only)
+### Step 5: Deep Enrichment (Blitz API + Octave)
 
-For leads where Signaliz returned a **verified** email AND a company domain, enrich the top companies through Octave for deeper intelligence:
+For leads where Signaliz returned a **verified** email AND a company domain, enrich through Blitz API (higher volume) and Octave (deeper intelligence):
 
+**5a — Blitz API Company Enrichment (up to 500 companies):**
 ```
-ACTION: Enrich companies via Octave
+ACTION: Enrich companies via Blitz API
+TOOL:   Blitz API — POST /v2/enrichment/company
+CONFIG:
+  domain: "{each unique company_domain}"
+OUTPUT: company_name, industry, employee_count, location, description
+RATE: 5 RPS — process 5 companies/second
+CAP: 500 unique companies per run
+```
+
+**5b — Octave Deep Enrichment (top 50 companies):**
+```
+ACTION: Enrich top companies via Octave for deeper intelligence
 TOOL:   mcp__Octave__enrich_company
 BATCH:  Process up to 50 unique company domains
         (deduplicate — multiple contacts at same company = 1 enrichment call)
 CONFIG:
   companyDomain: {each unique domain}
 OUTPUT: Firmographics, funding, hiring signals, tech stack
+RATE: 1 call/second, cap at 50 companies
 ```
 
-**Rate limiting:** Octave enrichment is per-call. Process sequentially with 1-second gaps between calls to avoid rate limits. Cap at 50 companies per run.
+**5c — Blitz API Email Enrichment (for leads missing email):**
+```
+ACTION: Find emails via Blitz API for leads where Signaliz couldn't find one
+TOOL:   Blitz API — POST /v2/enrichment/email
+CONFIG:
+  linkedin_url: "{contact.linkedin_url}"
+OUTPUT: verified email, verification_status
+RATE: 5 RPS
+CONDITION: Only for leads with linkedin_url but no email after Step 4
+```
 
 ### Step 6: Merge & Output
 
@@ -159,13 +195,35 @@ CONFIG: page_size: 500, paginate through all pages
 
 ---
 
+### Step 7: Write Results to Supabase
+
+```
+ACTION: Update leads in Supabase with enrichment data
+TOOL:   mcp__Supabase__execute_sql
+CONFIG:
+  UPDATE {supabase_table} SET
+    email_verified = CASE WHEN verification_status = 'verified' THEN true ELSE false END,
+    verification_status = '{status}',
+    company_industry = '{industry}',
+    company_size = '{size}',
+    company_description = '{description}',
+    tier = '{tier}',
+    enriched_at = now(),
+    updated_at = now()
+  WHERE email = '{email}'
+BATCH: 100 updates per SQL statement
+```
+
+---
+
 ## Output
 
 | Deliverable | Format | Description |
 |---|---|---|
-| `enriched_leads_verified.csv` | CSV | Tier 1 + Tier 2 leads (safe to campaign) |
-| `enriched_leads_catchall.csv` | CSV | Tier 3 leads (catch-all, use with caution) |
-| `enriched_leads_removed.csv` | CSV | Tier 4 leads (invalid, do not send) |
+| **Supabase table** | DB rows | Updated with verification_status, tier, enrichment data |
+| `enriched_leads_verified.csv` | CSV (optional) | Tier 1 + Tier 2 leads (safe to campaign) |
+| `enriched_leads_catchall.csv` | CSV (optional) | Tier 3 leads (catch-all, use with caution) |
+| `enriched_leads_removed.csv` | CSV (optional) | Tier 4 leads (invalid, do not send) |
 | **Summary stats** | Inline | Total processed, verified %, catch-all %, invalid %, enrichment coverage |
 
 ---

@@ -3,7 +3,7 @@
 **ID:** `signaliz-personalized-outreach`
 **Version:** 1.0.0
 **Max Batch:** 5,000 leads (personalization generated for top 200, template variables for rest)
-**MCP Dependencies:** Signaliz, Instantly, Octave
+**MCP Dependencies:** Signaliz, Instantly, Octave, Blitz API, Supabase
 
 ---
 
@@ -42,6 +42,20 @@ User says any of:
 - `sequence_steps`: Number of follow-up emails (1-4, default: 3)
 - `tone`: Conversational, professional, casual, direct
 - `focus_signals`: Which signals to emphasize in personalization
+
+### Source: Supabase Table (preferred — chained from Skill 03)
+```
+ACTION: Read scored, verified leads from Supabase
+TOOL:   mcp__Supabase__execute_sql
+CONFIG:
+  SELECT * FROM {supabase_table}
+  WHERE email_verified = true
+  AND verification_status = 'verified'
+  AND tier IN ('HOT', 'WARM', 'MEDIUM')
+  AND campaign_id IS NULL
+  ORDER BY lead_score DESC
+  LIMIT {target_count}
+```
 
 ---
 
