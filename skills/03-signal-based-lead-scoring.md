@@ -181,14 +181,41 @@ CONFIG:
 For companies where Signaliz signals are sparse, backfill with Blitz API:
 
 ```
+ACTION: Get Company LinkedIn URL (if missing)
+TOOL:   Blitz API — POST /v2/enrichment/domain-to-linkedin
+CONFIG:
+  domain: "{company_domain}"
+OUTPUT: found (bool), company_linkedin_url
+RATE: 5 RPS
+
 ACTION: Enrich companies missing signal data
 TOOL:   Blitz API — POST /v2/enrichment/company
 CONFIG:
-  domain: "{company_domain}"
-OUTPUT: industry, employee_count, location, description, linkedin_url
+  company_linkedin_url: "{company_linkedin_url}"
+OUTPUT: name, industry, employee_count, headquarters, website, description
 RATE: 5 RPS
 CAP: Up to 200 companies with missing data
+
+ACTION: Find additional decision-makers (optional, for multi-threaded outreach)
+TOOL:   Blitz API — POST /v2/search/waterfall-icp-keyword
+CONFIG:
+  company_linkedin_url: "{company_linkedin_url}"
+  cascade: [
+    { "job_titles": ["CEO", "Founder", "Owner"], "seniority": "c_level" },
+    { "job_titles": ["VP Sales", "VP Marketing"], "seniority": "vp" },
+    { "job_titles": ["Director of Sales"], "seniority": "director" }
+  ]
+  location: "WORLD"
+  max_results: 3
+OUTPUT: matched person with linkedin_url, title, company
+RATE: 5 RPS
 ```
+
+**Blitz API enrichment chain for scoring:**
+1. `domain-to-linkedin` → get `company_linkedin_url`
+2. `enrichment/company` → get firmographics (industry, size, HQ)
+3. `waterfall-icp-keyword` → find decision-makers for multi-threading
+4. `enrichment/email` → get verified work emails for found contacts
 
 ### Step 4: Octave Person-Level Qualification (top 50 contacts)
 

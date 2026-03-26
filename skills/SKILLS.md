@@ -115,9 +115,9 @@ CREATE TABLE leads (
 | MCP Server | Purpose | Required For | Rate Limits |
 |---|---|---|---|
 | **Signaliz** | Email verification, signal enrichment, AI scoring, governance, data cleaning | Skills 01, 02, 03, 04, 05 | 1,000 rows/wave, 500 parallel |
-| **Octave** | Company/person find, enrich, qualify, email generation | Skills 00, 01, 02, 03, 05 | 100/query find, 1/sec enrich |
-| **Instantly** | Campaign creation, lead loading, campaign activation, email verify | Skills 02, 04, 05 | 1,000 leads/bulk batch |
-| **Blitz API** | Company search, employee finder, email/company enrichment | Skills 00, 01, 03 | 5 RPS, 5 concurrent |
+| **Octave** | Company/person find, enrich (no emails), qualify, email generation | Skills 00, 01, 02, 03, 05 | 100/query find, 1/sec enrich |
+| **Instantly** | Campaign creation, lead loading, campaign activation, email verification (pattern guessing fallback) | Skills 00, 01, 02, 04, 05 | 1,000 leads/bulk batch |
+| **Blitz API** | Find work emails (LinkedIn→email), company/people search, company enrichment, domain↔LinkedIn lookup, email validation (SMTP) | Skills 00, 01, 03, 05 | 5 RPS, 5 concurrent |
 | **Supabase** | Central lead storage, state tracking, audit trail | All skills | 100 rows/INSERT batch |
 
 ---
@@ -134,8 +134,13 @@ All skills use consistent batching to prevent API errors:
 | AI scoring | `Signaliz run_system` | 1,000/wave | 500 parallel | 5 sequential waves |
 | Blitz company search | `Blitz API /v2/search/companies` | 100/page | 5 RPS | Sequential pages, 200ms gap |
 | Blitz employee finder | `Blitz API /v2/search/employee-finder` | 10/company | 5 RPS | Sequential, 200ms gap |
-| Blitz email enrichment | `Blitz API /v2/enrichment/email` | 1/call | 5 RPS | Sequential, 200ms gap |
+| Blitz waterfall ICP | `Blitz API /v2/search/waterfall-icp-keyword` | 1/call | 5 RPS | Sequential, 200ms gap |
+| Blitz find work email | `Blitz API /v2/enrichment/email` | 1/call | 5 RPS | Sequential, 200ms gap — **primary email source** |
+| Blitz reverse email | `Blitz API /v2/enrichment/email-to-person` | 1/call | 5 RPS | Sequential, 200ms gap |
 | Blitz company enrichment | `Blitz API /v2/enrichment/company` | 1/call | 5 RPS | Sequential, 200ms gap |
+| Blitz linkedin→domain | `Blitz API /v2/enrichment/linkedin-to-domain` | 1/call | 5 RPS | Sequential, 200ms gap |
+| Blitz domain→linkedin | `Blitz API /v2/enrichment/domain-to-linkedin` | 1/call | 5 RPS | Sequential, 200ms gap |
+| Blitz email validate | `Blitz API /v2/utilities/email/validate` | 1/call | 5 RPS | Sequential, 200ms gap |
 | Octave find_person | `Octave find_person` | 100/query | 1/sec | Sequential with city/title fan-out |
 | Octave enrichment | `Octave enrich_company` | 1/call | 1/sec | Sequential, cap at 50 |
 | Octave email gen | `Octave generate_email` | 1/call | 1/sec | Sequential, cap at 200 |

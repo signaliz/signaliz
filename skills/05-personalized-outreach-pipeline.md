@@ -35,7 +35,7 @@ User says any of:
 | `company_domain` | Yes | Company domain |
 | `company_name` | No | Company name |
 | `job_title` | No | Contact title (improves personalization) |
-| `linkedin_url` | No | LinkedIn URL (enables deep Octave enrichment) |
+| `linkedin_url` | No | LinkedIn URL (enables Blitz API email finding + deep Octave enrichment) |
 
 **Optional configuration:**
 - `personalization_depth`: `"deep"` (per-lead Octave), `"segment"` (per-company), `"template"` (variable substitution only)
@@ -100,6 +100,46 @@ POLL: get_run every 15s
 ```
 
 Output: Per-company signal data (hiring, funding, product launches, partnerships, leadership changes).
+
+### Step 1b: Blitz API Enrichment (backfill company data gaps)
+
+For companies missing firmographic data after Signaliz enrichment:
+
+```
+ACTION: Get Company LinkedIn URL (if missing)
+TOOL:   Blitz API — POST /v2/enrichment/domain-to-linkedin
+CONFIG:
+  domain: "{company_domain}"
+OUTPUT: found (bool), company_linkedin_url
+RATE: 5 RPS
+
+ACTION: Enrich company profile
+TOOL:   Blitz API — POST /v2/enrichment/company
+CONFIG:
+  company_linkedin_url: "{company_linkedin_url}"
+OUTPUT: industry, employee_count, headquarters, website, description
+RATE: 5 RPS, cap 200 companies
+
+ACTION: Find additional contacts for multi-threaded outreach (optional)
+TOOL:   Blitz API — POST /v2/search/employee-finder
+CONFIG:
+  company_linkedin_url: "{company_linkedin_url}"
+  job_level: ["c_level", "vp"]
+  department: ["sales", "marketing", "executive"]
+  max_results: 5
+OUTPUT: employee linkedin_url, name, title per match
+RATE: 5 RPS
+
+ACTION: Get work emails for found contacts
+TOOL:   Blitz API — POST /v2/enrichment/email
+CONFIG:
+  linkedin_url: "{employee_linkedin_url}"
+OUTPUT: found (bool), email
+RATE: 5 RPS
+```
+
+- Use Blitz API Employee Finder + Find Work Email to add multi-threaded contacts
+- Store additional contacts in Supabase with same `company_domain` grouping
 
 ### Step 2: Segment Leads by Signal Profile
 
