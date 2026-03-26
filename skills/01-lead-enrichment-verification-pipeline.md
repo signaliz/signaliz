@@ -1,252 +1,89 @@
-# Skill: Lead Enrichment & Verification Pipeline
+# Skill 01: Lead Enrichment & Verification Pipeline
 
-**ID:** `signaliz-enrich-verify-pipeline`
-**Version:** 1.0.0
 **Max Batch:** 5,000 leads
-**MCP Dependencies:** Signaliz, Octave, Blitz API, Supabase
-
----
-
-## Description
-
-End-to-end pipeline that takes raw lead data (CSV, JSON, Google Sheet, or inline), enriches companies via Signaliz signals and Octave intelligence, finds and verifies email addresses through Signaliz, and outputs a clean, enriched lead list ready for campaign loading. Handles up to 5,000 leads with zero-error batching.
+**MCP Tools:** Instantly (verify_email), Octave (enrich_company), Supabase
 
 ---
 
 ## Trigger
 
-User says any of:
-- "Enrich and verify these leads"
-- "Find emails and enrich this list"
-- "Run the enrichment pipeline"
-- "Clean and enrich my leads"
-- Uploads a CSV/Sheet with columns like `first_name`, `last_name`, `company`, `domain`
+User asks to enrich/verify leads, or chains from Skill 00.
 
----
+## Workflow
 
-## Input Schema
+### 1. Load Leads from Supabase
 
-The pipeline accepts leads from **two sources**:
-
-### Source A: Supabase Table (preferred — chained from Skill 00)
+```sql
+SELECT * FROM {table}
+WHERE email IS NULL OR email_verified = false
+ORDER BY created_at DESC
+LIMIT {batch_size}
 ```
-ACTION: Read leads from Supabase
-TOOL:   mcp__Supabase__execute_sql
+
+### 2. Find Emails via Pattern Guessing + Instantly Verify
+
+**Note:** Octave `enrich_person` returns intelligence reports but NOT email addresses. Use pattern guessing + Instantly verification instead.
+
+```
+APPROACH: For each lead with company_domain and NULL email:
+PATTERNS (try in order):
+  1. firstname@domain
+  2. firstname.lastname@domain
+
+TOOL: mcp__Instantly__verify_email (use all 3 instances in parallel)
 CONFIG:
-  SELECT * FROM {supabase_table}
-  WHERE email_verified = false
-  AND email IS NOT NULL
-  ORDER BY created_at DESC
-  LIMIT {batch_size}
+  email: "{pattern}"
+  max_wait_seconds: 45
+OUTPUT: verification_status (verified/invalid/pending), catch_all flag
+RATE: 3 parallel verifications at once, ~2-10s each
 ```
 
-### Source B: Direct Input (CSV, JSON, inline)
+- Only process leads that still have NULL email AND have a company_domain
+- Try `firstname@domain` first — highest hit rate for small business owners
+- If invalid, try `firstname.lastname@domain`
+- Update Supabase with verified emails in batches of 10
+- Expected hit rate: ~25-30% of leads with domains
 
-| Field | Required | Description |
-|---|---|---|
-| `first_name` | Yes* | Contact first name |
-| `last_name` | Yes* | Contact last name |
-| `company_domain` | Yes** | Company website domain (e.g., acme.com) |
-| `company_name` | No | Company name (fallback if no domain) |
-| `email` | No | Existing email (skip finding, go straight to verify) |
-| `linkedin_url` | No | LinkedIn profile URL (improves email finding accuracy) |
-| `job_title` | No | Job title (passed to Octave for qualification) |
-
-\* `full_name` accepted as alternative to `first_name` + `last_name`
-\** `domain` or `website` accepted as aliases — auto-mapped via field_mappings
-
----
-
-## Execution Steps
-
-### Step 1: Ingest & Validate (all records)
+### 3. Enrich Companies (top 50 unique domains)
 
 ```
-ACTION: Upload data to Signaliz workspace list
-TOOL:   mcp__Signaliz__upload_data
+TOOL: mcp__Octave__enrich_company
 CONFIG:
-  - list_name: "Enrich Pipeline — {timestamp}"
-  - entity_type: "person"
-  - Auto-detect format (CSV or JSON)
-OUTPUT: list_id, row_count, column_names
+  companyDomain: "{domain}"
+OUTPUT: firmographics, funding, hiring signals, tech stack
+RATE: 1 call/sec, cap 50 companies
 ```
 
-**Validation rules:**
-- Reject records missing both `company_domain` AND `company_name`
-- Reject records missing both `full_name` AND (`first_name` + `last_name`)
-- Log rejected records with reason — report count to user before proceeding
+### 4. Update Supabase
 
-### Step 2: Create Enrichment System
-
-```
-ACTION: Build Signaliz automation pipeline
-TOOL:   mcp__Signaliz__create_system
-CONFIG:
-  name: "Enrich + Verify Pipeline — {timestamp}"
-  capabilities:
-    - "mcp_input"
-    - "enrich_company_signals"
-    - "find_emails_with_verification"
-    - "verify_emails"
-    - "mcp_output"
-  field_mappings:
-    website: "company_domain"
-    domain: "company_domain"
-    companyName: "company_name"
-    fullName: "full_name"
-    firstName: "first_name"
-    lastName: "last_name"
-  contract:
-    required_fields:
-      - name: "email"
-        type: "string"
-      - name: "verification_status"
-        type: "string"
-      - name: "company_domain"
-        type: "string"
-OUTPUT: system_id
+```sql
+UPDATE {table} SET
+  email = '{email}',
+  email_verified = true,
+  verification_status = 'verified',
+  company_industry = '{industry}',
+  enriched_at = now(),
+  updated_at = now()
+WHERE linkedin_profile = '{linkedin}'
 ```
 
-### Step 3: Execute Pipeline (batched for 5,000)
+Batch 100 updates per SQL statement.
+
+### 5. Report
 
 ```
-ACTION: Run the system against the uploaded list
-TOOL:   mcp__Signaliz__run_system
-CONFIG:
-  system_id: {from step 2}
-  list_id: {from step 1}
-OUTPUT: run_id
+Enrichment Complete:
+  Processed: {N}
+  Emails found: {N} ({pct}%)
+  Companies enriched: {N}
+  Ready for Skill 03 (scoring) or Skill 05 (outreach)?
 ```
-
-**Batch handling for >1,000 records:**
-- Signaliz `run_system` handles concurrency internally (500 parallel workers)
-- For lists >1,000 rows, use `list_limit: 1000` and run in sequential waves:
-  - Wave 1: rows 1–1,000
-  - Wave 2: rows 1,001–2,000
-  - Wave 3: rows 2,001–3,000
-  - Wave 4: rows 3,001–4,000
-  - Wave 5: rows 4,001–5,000
-- Track each wave's `run_id` independently
-
-### Step 4: Poll for Completion
-
-```
-ACTION: Monitor run progress
-TOOL:   mcp__Signaliz__get_run (per wave run_id)
-LOOP:   Poll every 15 seconds until status = "completed" or "failed"
-TIMEOUT: 10 minutes per wave, then flag as stalled
-```
-
-### Step 5: Deep Enrichment (Blitz API + Octave)
-
-For leads where Signaliz returned a **verified** email AND a company domain, enrich through Blitz API (higher volume) and Octave (deeper intelligence):
-
-**5a — Blitz API Company Enrichment (up to 500 companies):**
-```
-ACTION: Enrich companies via Blitz API
-TOOL:   Blitz API — POST /v2/enrichment/company
-CONFIG:
-  domain: "{each unique company_domain}"
-OUTPUT: company_name, industry, employee_count, location, description
-RATE: 5 RPS — process 5 companies/second
-CAP: 500 unique companies per run
-```
-
-**5b — Octave Deep Enrichment (top 50 companies):**
-```
-ACTION: Enrich top companies via Octave for deeper intelligence
-TOOL:   mcp__Octave__enrich_company
-BATCH:  Process up to 50 unique company domains
-        (deduplicate — multiple contacts at same company = 1 enrichment call)
-CONFIG:
-  companyDomain: {each unique domain}
-OUTPUT: Firmographics, funding, hiring signals, tech stack
-RATE: 1 call/second, cap at 50 companies
-```
-
-**5c — Blitz API Email Enrichment (for leads missing email):**
-```
-ACTION: Find emails via Blitz API for leads where Signaliz couldn't find one
-TOOL:   Blitz API — POST /v2/enrichment/email
-CONFIG:
-  linkedin_url: "{contact.linkedin_url}"
-OUTPUT: verified email, verification_status
-RATE: 5 RPS
-CONDITION: Only for leads with linkedin_url but no email after Step 4
-```
-
-### Step 6: Merge & Output
-
-```
-ACTION: Retrieve final results
-TOOL:   mcp__Signaliz__get_run_results (per wave)
-CONFIG: page_size: 500, paginate through all pages
-```
-
-**Merge logic:**
-1. Join Signaliz verification results with Octave enrichment on `company_domain`
-2. Classify each lead:
-   - **Tier 1 — Ready:** verified email + company enriched
-   - **Tier 2 — Usable:** verified email, no deep enrichment
-   - **Tier 3 — Risky:** catch-all email
-   - **Tier 4 — Dead:** invalid/unknown email
-3. Output as structured CSV with columns:
-   `first_name, last_name, email, verification_status, company_domain, company_name, job_title, tier, company_industry, company_size, funding_stage, hiring_signals`
-
----
-
-### Step 7: Write Results to Supabase
-
-```
-ACTION: Update leads in Supabase with enrichment data
-TOOL:   mcp__Supabase__execute_sql
-CONFIG:
-  UPDATE {supabase_table} SET
-    email_verified = CASE WHEN verification_status = 'verified' THEN true ELSE false END,
-    verification_status = '{status}',
-    company_industry = '{industry}',
-    company_size = '{size}',
-    company_description = '{description}',
-    tier = '{tier}',
-    enriched_at = now(),
-    updated_at = now()
-  WHERE email = '{email}'
-BATCH: 100 updates per SQL statement
-```
-
----
-
-## Output
-
-| Deliverable | Format | Description |
-|---|---|---|
-| **Supabase table** | DB rows | Updated with verification_status, tier, enrichment data |
-| `enriched_leads_verified.csv` | CSV (optional) | Tier 1 + Tier 2 leads (safe to campaign) |
-| `enriched_leads_catchall.csv` | CSV (optional) | Tier 3 leads (catch-all, use with caution) |
-| `enriched_leads_removed.csv` | CSV (optional) | Tier 4 leads (invalid, do not send) |
-| **Summary stats** | Inline | Total processed, verified %, catch-all %, invalid %, enrichment coverage |
-
----
 
 ## Error Handling
 
 | Error | Recovery |
 |---|---|
-| Signaliz 502/503 | Wait 5s, retry up to 3 times |
-| `run_system` timeout | Check `get_run` — if partial results, collect them and re-run remaining |
-| Octave rate limit | Back off 10s, reduce concurrent calls |
-| Upload fails | Validate data format, retry with explicit `format: "csv"` |
-| Partial wave failure | Collect successful rows, isolate failed rows, retry failed subset |
-
----
-
-## Cost Estimation
-
-Before executing, estimate and confirm with user:
-```
-TOOL: mcp__Signaliz__estimate_system_cost
-  system_id: {from step 2}
-  record_count: {total leads}
-```
-
-Report: "This will process {N} leads. Estimated cost: {X} credits. Proceed?"
+| Instantly rate limit | Back off 2s, retry |
+| Both patterns invalid | Flag as "no_email", skip |
+| Verification pending (timeout) | Retry later or skip |
+| Supabase update fails | Retry, reduce batch |
