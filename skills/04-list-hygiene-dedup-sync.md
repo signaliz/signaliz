@@ -3,7 +3,7 @@
 **ID:** `signaliz-list-hygiene`
 **Version:** 1.0.0
 **Max Batch:** 5,000 leads
-**MCP Dependencies:** Signaliz, Instantly, Supabase
+**MCP Dependencies:** Signaliz, Instantly (×3), Blitz API, Gmail, Supabase
 
 ---
 
@@ -149,6 +149,38 @@ CONFIG:
 OUTPUT: blocked_emails[], clean_emails[]
 ```
 
+### Step 4b: Campaign Performance Check (if cleaning an active campaign)
+
+Before cleaning, check campaign health to inform decisions:
+
+```
+ACTION: Get campaign analytics
+TOOL:   mcp__Instantly__get_campaign_analytics
+CONFIG:
+  params:
+    campaign_id: "{campaign_id}"
+OUTPUT: sent, opens, clicks, replies, bounces, unsubscribes
+
+ACTION: Get verification stats for list
+TOOL:   mcp__Instantly__get_verification_stats_for_lead_list
+CONFIG:
+  params:
+    list_id: "{list_id}"
+OUTPUT: valid, invalid, risky, unknown counts
+
+ACTION: Check for replies via Gmail (catch replies outside Instantly)
+TOOL:   mcp__Gmail__gmail_search_messages
+CONFIG:
+  q: "is:unread subject:{campaign_subject}"
+  maxResults: 50
+OUTPUT: unread replies from leads
+```
+
+**Decision matrix:**
+- Bounce rate > 5% → remove bounced leads, check warmup health
+- Reply rate > 2% → campaign healthy, focus on removing invalids
+- Open rate < 10% → possible deliverability issue, check sender warmup
+
 ### Step 5: Email Verification (batch)
 
 ```
@@ -192,7 +224,27 @@ For each INVALID/BLOCKED lead:
   RATE: Max 5 deletes/second to avoid rate limits
 ```
 
-**Option B: Create clean list and move leads**
+**Option B: Move leads between campaigns/lists (preferred for large batches)**
+```
+ACTION: Move invalid leads to quarantine list
+TOOL:   mcp__Instantly__move_leads_to_campaign_or_list
+CONFIG:
+  params:
+    campaign: "{source_campaign_id}"
+    filter: "bounced"
+    to_list_id: "{quarantine_list_id}"
+
+ACTION: Move clean leads to new campaign
+TOOL:   mcp__Instantly__move_leads_to_campaign_or_list
+CONFIG:
+  params:
+    campaign: "{source_campaign_id}"
+    filter: "not_yet_contacted"
+    to_campaign_id: "{clean_campaign_id}"
+    check_duplicates: true
+```
+
+**Option C: Create clean list and bulk add**
 ```
 ACTION: Create new clean list
 TOOL:   mcp__Instantly__create_lead_list

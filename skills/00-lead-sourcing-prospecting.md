@@ -1,7 +1,7 @@
 # Skill 00: Lead Sourcing & Prospecting
 
 **Max Batch:** 5,000 leads
-**MCP Tools:** Octave (find_person), Blitz API (employee_finder, find_work_email, company_search), Instantly (verify_email), Supabase
+**MCP Tools:** Octave (find_person, find_similar_companies, find_similar_people), Blitz API (employee_finder, find_work_email, company_search, waterfall_icp), Instantly (verify_email ×3), Supabase
 
 ---
 
@@ -37,6 +37,48 @@ CONFIG:
 - Use both working Octave instances in parallel to double throughput
 - Paginate aggressively: increment offset by 100 until target reached
 - Each query returns ~100 results; after title filtering expect ~20-60 usable leads
+
+### 2b. Expand via Lookalike Lists (optional, to hit target count)
+
+If Octave find_person is under target, use lookalike sourcing to expand:
+
+**Find Similar Companies (from best-performing companies in batch):**
+```
+TOOL: mcp__Octave__find_similar_companies
+CONFIG:
+  referenceCompany: { domain: "{top_company_domain}" }
+  numResults: 25
+  similarityTraits: ["industry", "size", "business_model"]
+  previousResults: ["{already_sourced_domains}"]
+OUTPUT: similar companies with domain, name, industry
+```
+
+Then use Blitz API Employee Finder or Waterfall ICP to find decision-makers at each:
+```
+TOOL: Blitz API — POST /v2/search/waterfall-icp-keyword
+CONFIG:
+  company_linkedin_url: "{company_linkedin_url}"
+  cascade: [
+    { "job_titles": ["CEO", "Founder", "Owner"], "seniority": "c_level" },
+    { "job_titles": ["President", "Managing Director"], "seniority": "c_level" }
+  ]
+  location: "US"
+  max_results: 3
+OUTPUT: matched person with linkedin_url, title, company
+RATE: 5 RPS
+```
+
+**Find Similar People (from best leads):**
+```
+TOOL: mcp__Octave__find_similar_people
+CONFIG:
+  referencePerson: { linkedInProfile: "{best_lead_linkedin}", companyDomain: "{domain}" }
+OUTPUT: similar people with name, title, company, linkedin
+```
+
+- Use `previousResults` to exclude already-sourced domains/people
+- Chain with Blitz Find Work Email to get emails for new contacts
+- Great for filling gaps when keyword search plateaus
 
 ### 3. Find & Verify Emails (inline, not separate)
 

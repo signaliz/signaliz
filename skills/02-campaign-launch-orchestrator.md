@@ -3,7 +3,7 @@
 **ID:** `signaliz-campaign-launcher`
 **Version:** 1.0.0
 **Max Batch:** 5,000 leads
-**MCP Dependencies:** Signaliz, Instantly, Octave, Supabase
+**MCP Dependencies:** Signaliz, Instantly (×3), Octave (×2), Gmail, Google Calendar, Supabase
 
 ---
 
@@ -56,6 +56,32 @@ CONFIG:
 
 ## Execution Steps
 
+### Step 0: Pre-flight Sender Health Check
+
+Before launching, verify sender accounts are warmed and healthy:
+
+```
+ACTION: Check warmup analytics for sender accounts
+TOOL:   mcp__Instantly__get_warmup_analytics
+CONFIG:
+  emails: ["{sender1}", "{sender2}", ...]
+  start_date: "{7_days_ago}"
+OUTPUT: inbox_placement_rate, spam_rate, reply_rate, daily_progress
+```
+
+**Health thresholds:**
+- Inbox placement > 80% → ready to send
+- Inbox placement 60-80% → warn user, suggest reducing daily limit
+- Inbox placement < 60% → do NOT activate, recommend continued warmup
+
+```
+ACTION: Check account states
+TOOL:   mcp__Instantly__manage_account_state
+CONFIG:
+  Check each sender account warmup status
+OUTPUT: warmup active, days warmed, current state
+```
+
 ### Step 1: Pre-flight Governance Check
 
 ```
@@ -93,6 +119,21 @@ OUTPUT: job_id → poll with check_job_status
 
 If user hasn't provided email copy:
 
+**Option A: Use saved email agent (preferred — consistent brand voice):**
+```
+ACTION: Run saved email agent
+TOOL:   mcp__Octave__run_email_agent
+CONFIG:
+  agent: "{agent_name_or_oId}"  # Use list_agents to find
+  person:
+    firstName: "{{firstName}}"
+    companyName: "{{companyName}}"
+    companyDomain: "{{companyDomain}}"
+    jobTitle: "{{jobTitle}}"
+OUTPUT: personalized subject + body per step, with brand voice
+```
+
+**Option B: One-off email generation (if no agent exists):**
 ```
 ACTION: Search knowledge base for messaging guidance
 TOOL:   mcp__Octave__search_knowledge_base
@@ -106,12 +147,26 @@ ACTION: Generate email sequence
 TOOL:   mcp__Octave__generate_email
 CONFIG:
   person:
-    firstName: "{{firstName}}"  # Template — will be personalized per lead
+    firstName: "{{firstName}}"
     companyName: "{{companyName}}"
   sequenceType: "COLD_OUTBOUND"
   numEmails: 3
   allEmailsInstructions: "Keep under 100 words. No links in first email. Conversational tone."
 OUTPUT: subject, body for each step
+```
+
+**Option C: Create a reusable email agent for future campaigns:**
+```
+ACTION: Create email agent
+TOOL:   mcp__Octave__create_agent
+CONFIG:
+  name: "{campaign_type} Outbound Agent"
+  type: "EMAIL"
+  sequenceType: "COLD_OUTBOUND"
+  numEmails: 3
+  customInstructions: "Keep under 100 words. No links in first email. Conversational tone."
+  generateUniqueSubjectLines: true
+OUTPUT: agent oId — reuse for all leads in this campaign
 ```
 
 ### Step 4: Create Instantly Campaign (2-step process)
@@ -265,6 +320,79 @@ CONFIG:
 
 ---
 
+### Step 9: Post-Launch Monitoring Setup
+
+```
+ACTION: Check for replies (run periodically after launch)
+TOOL:   mcp__Instantly__count_unread_emails
+CONFIG:
+  (no params — returns unread count)
+OUTPUT: unread_count
+
+ACTION: Get campaign performance
+TOOL:   mcp__Instantly__get_campaign_analytics
+CONFIG:
+  params:
+    campaign_id: "{campaign_id}"
+OUTPUT: sent, opens, clicks, replies, bounces, unsubscribes
+
+ACTION: Search Gmail for direct replies (outside Instantly)
+TOOL:   mcp__Gmail__gmail_search_messages
+CONFIG:
+  q: "is:unread from:{lead_domain} subject:{campaign_subject}"
+  maxResults: 20
+OUTPUT: message list with IDs for reading
+```
+
+**If lead replies with interest:**
+```
+ACTION: Generate call prep for hot responder
+TOOL:   mcp__Octave__generate_call_prep
+CONFIG:
+  person:
+    firstName: "{lead_first_name}"
+    companyDomain: "{company_domain}"
+    email: "{lead_email}"
+    jobTitle: "{job_title}"
+  meetingContext: "Responded to outbound campaign — interested in learning more"
+OUTPUT: discovery questions, company brief, objection handling
+
+ACTION: Schedule follow-up call
+TOOL:   mcp__GCal__gcal_create_event
+CONFIG:
+  event:
+    summary: "Discovery Call — {lead_name} @ {company}"
+    start: { dateTime: "{available_slot}" }
+    end: { dateTime: "{30min_later}" }
+    attendees: [{ email: "{lead_email}" }]
+    description: "{call_prep_summary}"
+```
+
+### Step 10: Mid-Campaign Adjustments
+
+```
+ACTION: Update campaign settings if needed
+TOOL:   mcp__Instantly__update_campaign
+CONFIG:
+  params:
+    campaign_id: "{campaign_id}"
+    daily_limit: {adjusted_limit}
+    sequences: [{updated_steps}]  # Modify copy based on performance
+    open_tracking: false           # Improve deliverability
+```
+
+```
+ACTION: Move bounced/unresponsive leads to nurture list
+TOOL:   mcp__Instantly__move_leads_to_campaign_or_list
+CONFIG:
+  params:
+    campaign: "{campaign_id}"
+    filter: "bounced"
+    to_list_id: "{nurture_list_id}"
+```
+
+---
+
 ## Safety Guards
 
 1. **Never activate without user confirmation**
@@ -273,3 +401,5 @@ CONFIG:
 4. **Always enable `skip_if_in_campaign: true`** — prevents duplicate sends
 5. **Always run Signaliz governance pre-flight** — blocklist + suppression
 6. **Always update Supabase** — track which leads are in which campaigns
+7. **Always check sender warmup health** before activating (Step 0)
+8. **Never send replies without user confirmation** — `reply_to_email` sends real email

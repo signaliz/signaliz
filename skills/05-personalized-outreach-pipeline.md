@@ -3,7 +3,7 @@
 **ID:** `signaliz-personalized-outreach`
 **Version:** 1.0.0
 **Max Batch:** 5,000 leads (personalization generated for top 200, template variables for rest)
-**MCP Dependencies:** Signaliz, Instantly, Octave, Blitz API, Supabase
+**MCP Dependencies:** Signaliz, Instantly (×3), Octave (×2), Blitz API, Gmail, Google Calendar, Supabase
 
 ---
 
@@ -181,11 +181,47 @@ CONFIG:
 
 **Tier 1 — Deep personalization (top 200 leads by segment priority):**
 
-Process GROWTH_SURGE and LEADERSHIP_CHANGE leads first via Octave:
+Process GROWTH_SURGE and LEADERSHIP_CHANGE leads first via Octave.
 
+**Preferred: Create a reusable email agent, then run for each lead:**
 ```
+ACTION: Create email agent for this campaign (once)
+TOOL:   mcp__Octave__create_agent
+CONFIG:
+  name: "{campaign_name} Outreach Agent"
+  type: "EMAIL"
+  sequenceType: "COLD_OUTBOUND"
+  numEmails: {sequence_steps}
+  customInstructions: |
+    - Reference specific company signals naturally (don't be creepy)
+    - Keep each email under 80 words
+    - No links in email 1
+    - Each follow-up should add new value, not just "bumping"
+    - Tone: {user_tone or "conversational"}
+  generateUniqueSubjectLines: true
+OUTPUT: agent oId
+
 FOR each lead (up to 200, prioritized by segment):
-  ACTION: Generate personalized sequence
+  ACTION: Run email agent
+  TOOL:   mcp__Octave__run_email_agent
+  CONFIG:
+    agent: "{agent_oId}"
+    person:
+      firstName: "{first_name}"
+      lastName: "{last_name}"
+      companyDomain: "{company_domain}"
+      companyName: "{company_name}"
+      jobTitle: "{job_title}"
+      email: "{email}"
+  OUTPUT: personalized subject + body per step, with consistent brand voice
+
+  RATE: 1 call/second, max 200 leads
+  STORE: Map lead.email → {custom_subject, custom_body, personalization_snippet}
+```
+
+**Fallback: One-off generate_email (if agent creation fails):**
+```
+FOR each lead (up to 200):
   TOOL:   mcp__Octave__generate_email
   CONFIG:
     person:
@@ -203,15 +239,11 @@ FOR each lead (up to 200, prioritized by segment):
       Pain point: {pain_point}
       Segment: {segment}
     allEmailsInstructions: |
-      - Reference specific company signals naturally (don't be creepy)
+      - Reference specific company signals naturally
       - Keep each email under 80 words
       - No links in email 1
-      - Each follow-up should add new value, not just "bumping"
       - Tone: {user_tone or "conversational"}
   OUTPUT: personalized subject + body per step
-
-  RATE: 1 call/second, max 200 leads
-  STORE: Map lead.email → {custom_subject, custom_body, personalization_snippet}
 ```
 
 **Tier 2 — Segment-based templates (remaining leads):**
@@ -379,6 +411,101 @@ IF yes:
 
 ---
 
+### Step 8: Post-Launch Reply Management
+
+```
+ACTION: Monitor for replies (check periodically)
+TOOL:   mcp__Instantly__get_campaign_analytics
+CONFIG:
+  params:
+    campaign_ids: ["{segment_campaign_ids}"]
+OUTPUT: replies, opens, clicks, bounces per segment
+
+ACTION: Check Gmail for direct replies
+TOOL:   mcp__Gmail__gmail_search_messages
+CONFIG:
+  q: "is:unread"
+  maxResults: 20
+OUTPUT: new messages — read with gmail_read_message
+
+ACTION: Draft follow-up for interested responders
+TOOL:   mcp__Gmail__gmail_create_draft
+CONFIG:
+  to: "{lead_email}"
+  subject: "Re: {original_subject}"
+  body: "{personalized_follow_up}"
+  threadId: "{original_thread_id}"
+```
+
+### Step 9: Schedule Calls for HOT Responders
+
+```
+ACTION: Generate call prep for hot lead
+TOOL:   mcp__Octave__generate_call_prep (or run_call_prep_agent)
+CONFIG:
+  person:
+    firstName: "{lead_name}"
+    companyDomain: "{company_domain}"
+    email: "{lead_email}"
+    jobTitle: "{job_title}"
+  meetingContext: "Responded positively to {segment} outbound campaign"
+OUTPUT: discovery questions, company brief, objection handling, case studies
+
+ACTION: Find available meeting time
+TOOL:   mcp__GCal__gcal_find_my_free_time
+CONFIG:
+  calendarIds: ["primary"]
+  timeMin: "{tomorrow_9am}"
+  timeMax: "{next_week_end}"
+  minDuration: 30
+OUTPUT: free_slots[]
+
+ACTION: Create discovery call event
+TOOL:   mcp__GCal__gcal_create_event
+CONFIG:
+  event:
+    summary: "Discovery Call — {lead_name} @ {company}"
+    start: { dateTime: "{selected_slot_start}" }
+    end: { dateTime: "{30min_later}" }
+    attendees: [{ email: "{lead_email}" }]
+    description: |
+      Call Prep Notes:
+      {call_prep_summary}
+
+      Discovery Questions:
+      {discovery_questions}
+```
+
+### Step 10: Mid-Campaign Optimization
+
+```
+ACTION: Get daily performance trends
+TOOL:   mcp__Instantly__get_daily_campaign_analytics
+CONFIG:
+  params:
+    campaign_id: "{segment_campaign_id}"
+    start_date: "{launch_date}"
+OUTPUT: daily sent, opens, clicks, replies — identify trends
+
+ACTION: Update underperforming campaigns
+TOOL:   mcp__Instantly__update_campaign
+CONFIG:
+  params:
+    campaign_id: "{underperforming_campaign_id}"
+    sequences: [{updated_copy}]
+    daily_limit: {adjusted}
+
+ACTION: Move non-responders to nurture
+TOOL:   mcp__Instantly__move_leads_to_campaign_or_list
+CONFIG:
+  params:
+    campaign: "{segment_campaign_id}"
+    filter: "not_yet_contacted"
+    to_list_id: "{nurture_list_id}"
+```
+
+---
+
 ## Safety Guards
 
 1. **Never activate without user preview and confirmation**
@@ -387,3 +514,6 @@ IF yes:
 4. **Exclude LOW_PRIORITY segment** from campaigns (offer as optional add-on)
 5. **Separate campaigns per segment** — enables independent pause/activation
 6. **Preview emails before send** — show at least one sample per segment
+7. **Never send replies without user confirmation** — `reply_to_email` sends real email
+8. **Always check sender warmup health** before activating
+9. **Create email agents for consistency** — prefer `run_email_agent` over one-off `generate_email`

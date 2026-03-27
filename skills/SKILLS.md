@@ -24,45 +24,58 @@ All skills follow the same orchestration pattern with **Supabase as the central 
 ```
 User Input (ICP criteria / CSV / Instantly list / Supabase query)
         |
-  +-- Skill 00: Sourcing --------+
-  |  Octave find_person/company  |
-  |  Blitz API company search    |
-  |  Blitz API employee finder   |
-  |  Blitz API email enrichment  |
-  |  -> Supabase (store leads)   |
-  +------------------------------+
+  +-- Skill 00: Sourcing -------------------+
+  |  Octave: find_person, find_similar       |
+  |  Blitz API: company search, employee     |
+  |    finder, waterfall ICP, find_work_email|
+  |  Instantly: verify_email (×3 parallel)   |
+  |  -> Supabase (store leads)              |
+  +------------------------------------------+
         |
-  +-- Skill 01: Enrich & Verify -+
-  |  Signaliz: signals, email    |
-  |    find/verify               |
-  |  Blitz API: email/company    |
-  |    enrichment (backfill)     |
-  |  Octave: deep company/person |
-  |    intelligence              |
-  |  -> Supabase (update leads)  |
-  +------------------------------+
+  +-- Skill 01: Enrich & Verify ------------+
+  |  Blitz API: find_work_email (primary),   |
+  |    company enrichment, domain lookups    |
+  |  Instantly: verify_email (pattern guess)  |
+  |  Octave: enrich_company (deep intel)     |
+  |  Signaliz: signals, AI scoring           |
+  |  -> Supabase (update leads)             |
+  +------------------------------------------+
         |
-  +-- Skill 03: Score & Rank ----+
-  |  Signaliz: signal enrichment |
-  |    + AI scoring              |
-  |  Blitz API: company backfill |
-  |  Octave: person qualification|
-  |  -> Supabase (update scores) |
-  +------------------------------+
+  +-- Skill 03: Score & Rank ---------------+
+  |  Signaliz: signal enrichment + AI score  |
+  |  Blitz API: company backfill, waterfall  |
+  |  Octave: qualify_person/company,         |
+  |    find_similar (lookalike expansion)     |
+  |  -> Supabase (update scores)            |
+  +------------------------------------------+
         |
-  +-- Skill 05: Personalize -----+
-  |  Signaliz: signals for hooks |
-  |  Octave: email generation    |
-  |  Instantly: campaign create, |
-  |    lead load, activate       |
-  |  -> Supabase (track campaigns|
-  +------------------------------+
+  +-- Skill 05: Personalize + Launch -------+
+  |  Signaliz: signals for hooks             |
+  |  Octave: email agents, call prep         |
+  |  Blitz API: employee finder, enrichment  |
+  |  Instantly: campaign create/update,      |
+  |    lead load, activate, analytics        |
+  |  Gmail: reply tracking, draft responses  |
+  |  GCal: schedule calls for HOT leads      |
+  |  -> Supabase (track campaigns)          |
+  +------------------------------------------+
         |
-  +-- Skill 04: Hygiene ----------+
-  |  Signaliz: verify, blocklist  |
-  |  Instantly: sync clean leads  |
-  |  -> Supabase (update status)  |
-  +-------------------------------+
+  +-- Skill 02: Campaign Launch -------------+
+  |  Instantly: warmup check, create, load,  |
+  |    activate, analytics, reply management |
+  |  Octave: email agents, call prep         |
+  |  Gmail: reply tracking                   |
+  |  GCal: schedule follow-ups               |
+  |  Signaliz: governance pre-flight         |
+  +------------------------------------------+
+        |
+  +-- Skill 04: Hygiene (periodic) ---------+
+  |  Signaliz: verify, blocklist             |
+  |  Instantly: analytics, move_leads, sync  |
+  |  Blitz API: email validation (SMTP)      |
+  |  Gmail: check for bounces/replies        |
+  |  -> Supabase (update status)            |
+  +------------------------------------------+
 ```
 
 ---
@@ -115,9 +128,11 @@ CREATE TABLE leads (
 | MCP Server | Purpose | Required For | Rate Limits |
 |---|---|---|---|
 | **Signaliz** | Email verification, signal enrichment, AI scoring, governance, data cleaning | Skills 01, 02, 03, 04, 05 | 1,000 rows/wave, 500 parallel |
-| **Octave** | Company/person find, enrich (no emails), qualify, email generation | Skills 00, 01, 02, 03, 05 | 100/query find, 1/sec enrich |
-| **Instantly** | Campaign creation, lead loading, campaign activation, email verification (pattern guessing fallback) | Skills 00, 01, 02, 04, 05 | 1,000 leads/bulk batch |
+| **Octave** (×2) | Company/person find, enrich (no emails), qualify, lookalike lists, persistent agents (email/call prep/enrich/qualify), knowledge base, email generation | Skills 00, 01, 02, 03, 05 | 100/query find, 1/sec enrich |
+| **Instantly** (×3) | Campaign CRUD, lead loading/moving, activation, email verification, analytics (campaign/daily/warmup), reply management, sender account management | All skills | 1,000 leads/bulk batch, 3× parallel verify |
 | **Blitz API** | Find work emails (LinkedIn→email), company/people search, company enrichment, domain↔LinkedIn lookup, email validation (SMTP) | Skills 00, 01, 03, 05 | 5 RPS, 5 concurrent |
+| **Gmail** | Search inbox for replies, read messages/threads, create draft responses | Skills 02, 04, 05 | — |
+| **Google Calendar** | Schedule calls/meetings, find availability, manage events | Skills 02, 05 | — |
 | **Supabase** | Central lead storage, state tracking, audit trail | All skills | 100 rows/INSERT batch |
 
 ---
@@ -141,11 +156,26 @@ All skills use consistent batching to prevent API errors:
 | Blitz linkedin→domain | `Blitz API /v2/enrichment/linkedin-to-domain` | 1/call | 5 RPS | Sequential, 200ms gap |
 | Blitz domain→linkedin | `Blitz API /v2/enrichment/domain-to-linkedin` | 1/call | 5 RPS | Sequential, 200ms gap |
 | Blitz email validate | `Blitz API /v2/utilities/email/validate` | 1/call | 5 RPS | Sequential, 200ms gap |
-| Octave find_person | `Octave find_person` | 100/query | 1/sec | Sequential with city/title fan-out |
+| Octave find_person | `Octave find_person` | 100/query | 1/sec | Sequential with keyword fan-out, 2 instances parallel |
+| Octave find_similar | `Octave find_similar_companies/people` | 25/call | 1/sec | Sequential, use as expansion after initial sourcing |
 | Octave enrichment | `Octave enrich_company` | 1/call | 1/sec | Sequential, cap at 50 |
-| Octave email gen | `Octave generate_email` | 1/call | 1/sec | Sequential, cap at 200 |
+| Octave qualify | `Octave qualify_person/company` | 1/call | 1/sec | Sequential, cap at 50 |
+| Octave email agent | `Octave run_email_agent` | 1/call | 1/sec | Sequential, cap at 200 — prefer over generate_email |
+| Octave call prep | `Octave generate_call_prep` | 1/call | 1/sec | On-demand for HOT leads |
+| Octave email gen | `Octave generate_email` | 1/call | 1/sec | Sequential, cap at 200 (fallback if no agent) |
 | Instantly lead load | `Instantly add_leads_bulk` | 1,000/batch | 2s gap | 5 sequential batches |
-| Instantly campaign | `Instantly create_campaign` | 1/call | — | 2-step process |
+| Instantly move leads | `Instantly move_leads_to_campaign_or_list` | bulk | — | Background job for large ops |
+| Instantly campaign create | `Instantly create_campaign` | 1/call | — | 2-step process (create → assign senders) |
+| Instantly campaign update | `Instantly update_campaign` | 1/call | — | Partial update (sequences, limits, tracking) |
+| Instantly analytics | `Instantly get_campaign_analytics` | 1/call | — | Opens, clicks, replies, bounces |
+| Instantly warmup | `Instantly get_warmup_analytics` | 1/call | — | Inbox placement, spam rate |
+| Instantly verify stats | `Instantly get_verification_stats` | 1/call | — | List verification breakdown |
+| Instantly reply | `Instantly reply_to_email` | 1/call | — | Sends real email — requires confirmation |
+| Gmail search | `Gmail gmail_search_messages` | 20/page | — | Paginated inbox search |
+| Gmail read | `Gmail gmail_read_message/thread` | 1/call | — | Full message/thread content |
+| Gmail draft | `Gmail gmail_create_draft` | 1/call | — | Draft replies for review |
+| GCal schedule | `GCal gcal_create_event` | 1/call | — | Schedule follow-up calls |
+| GCal availability | `GCal gcal_find_my_free_time` | 1/call | — | Find open slots |
 | Supabase writes | `Supabase execute_sql` | 100 rows/INSERT | — | Sequential batches |
 
 ### Error Recovery Pattern

@@ -217,13 +217,48 @@ RATE: 5 RPS
 3. `waterfall-icp-keyword` → find decision-makers for multi-threading
 4. `enrichment/email` → get verified work emails for found contacts
 
+### Step 3c: Lookalike Expansion (optional — find more companies like top scorers)
+
+After initial scoring, use top companies as seeds for lookalike discovery:
+
+```
+ACTION: Find similar companies to highest-scoring accounts
+TOOL:   mcp__Octave__find_similar_companies
+CONFIG:
+  referenceCompany: { domain: "{top_scored_domain}" }
+  numResults: 25
+  similarityTraits: ["industry", "size", "business_model", "target_market"]
+  previousResults: ["{all_existing_domains}"]
+OUTPUT: similar companies — feed back into scoring pipeline
+```
+
+- Run for top 5-10 highest-scoring companies
+- New companies go through Steps 2-3 for scoring
+- Great for ABM list expansion from proven ICP fits
+
 ### Step 4: Octave Person-Level Qualification (top 50 contacts)
 
 For the top 50 contacts (by company ICP score) that have job titles:
 
+**Option A: Use saved qualification agent (preferred):**
+```
+ACTION: Run saved qualify person agent
+TOOL:   mcp__Octave__run_qualify_person_agent
+CONFIG:
+  agent: "{qualify_agent_name_or_oId}"  # Use list_agents type=QUALIFY_PERSON
+  person:
+    firstName: "..."
+    lastName: "..."
+    companyDomain: "..."
+    jobTitle: "..."
+    email: "..."
+OUTPUT: qualification_score, fit_summary, recommended_approach
+```
+
+**Option B: One-off qualification:**
 ```
 ACTION: Qualify person against ICP
-TOOL:   mcp__Octave__qualify_person (or run_qualify_person_agent if agent exists)
+TOOL:   mcp__Octave__qualify_person
 CONFIG:
   person:
     firstName: "..."
@@ -234,9 +269,19 @@ CONFIG:
 OUTPUT: qualification_score, fit_summary, recommended_approach
 ```
 
+**For company-level qualification (complement person scoring):**
+```
+ACTION: Qualify company against ICP
+TOOL:   mcp__Octave__run_qualify_company_agent (or qualify_company)
+CONFIG:
+  agent: "{qualify_agent_name_or_oId}"
+  company: { domain: "{company_domain}" }
+OUTPUT: icp_fit_score, reasoning, recommended_approach
+```
+
 **Rate limiting:** Process sequentially, 1 call per second, cap at 50 persons.
 
-If no qualify agents exist, fall back to:
+If no qualify agents exist and enrichment is needed:
 ```
 TOOL:   mcp__Octave__enrich_person
 CONFIG:
@@ -244,7 +289,7 @@ CONFIG:
     firstName: "..."
     lastName: "..."
     companyDomain: "..."
-OUTPUT: profile data for manual scoring
+OUTPUT: profile data for manual scoring (does NOT return emails)
 ```
 
 ### Step 5: Composite Scoring & Ranking
