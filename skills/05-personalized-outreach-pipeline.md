@@ -3,7 +3,7 @@
 **ID:** `signaliz-personalized-outreach`
 **Version:** 1.0.0
 **Max Batch:** 5,000 leads (personalization generated for top 200, template variables for rest)
-**MCP Dependencies:** Signaliz, Instantly (×3), Octave (×2), Blitz API, Gmail, Google Calendar, Supabase
+**MCP Dependencies:** Signaliz, Instantly (×3), Octave (×2), Blitz API, Supabase
 
 ---
 
@@ -421,23 +421,21 @@ CONFIG:
     campaign_ids: ["{segment_campaign_ids}"]
 OUTPUT: replies, opens, clicks, bounces per segment
 
-ACTION: Check Gmail for direct replies
-TOOL:   mcp__Gmail__gmail_search_messages
+ACTION: Check for new replies
+TOOL:   mcp__Instantly__count_unread_emails
 CONFIG:
-  q: "is:unread"
-  maxResults: 20
-OUTPUT: new messages — read with gmail_read_message
+  (no params)
+OUTPUT: unread reply count
 
-ACTION: Draft follow-up for interested responders
-TOOL:   mcp__Gmail__gmail_create_draft
+ACTION: Read reply threads
+TOOL:   mcp__Instantly__list_emails
 CONFIG:
-  to: "{lead_email}"
-  subject: "Re: {original_subject}"
-  body: "{personalized_follow_up}"
-  threadId: "{original_thread_id}"
+  params:
+    campaign_id: "{segment_campaign_id}"
+OUTPUT: email threads with reply content
 ```
 
-### Step 9: Schedule Calls for HOT Responders
+### Step 9: Handle HOT Responders
 
 ```
 ACTION: Generate call prep for hot lead
@@ -451,29 +449,21 @@ CONFIG:
   meetingContext: "Responded positively to {segment} outbound campaign"
 OUTPUT: discovery questions, company brief, objection handling, case studies
 
-ACTION: Find available meeting time
-TOOL:   mcp__GCal__gcal_find_my_free_time
+ACTION: Update lead tier in Supabase
+TOOL:   mcp__Supabase__execute_sql
 CONFIG:
-  calendarIds: ["primary"]
-  timeMin: "{tomorrow_9am}"
-  timeMax: "{next_week_end}"
-  minDuration: 30
-OUTPUT: free_slots[]
+  UPDATE {supabase_table} SET
+    tier = 'HOT',
+    updated_at = now()
+  WHERE email = '{lead_email}'
 
-ACTION: Create discovery call event
-TOOL:   mcp__GCal__gcal_create_event
+ACTION: Reply via Instantly (requires user confirmation)
+TOOL:   mcp__Instantly__reply_to_email
 CONFIG:
-  event:
-    summary: "Discovery Call — {lead_name} @ {company}"
-    start: { dateTime: "{selected_slot_start}" }
-    end: { dateTime: "{30min_later}" }
-    attendees: [{ email: "{lead_email}" }]
-    description: |
-      Call Prep Notes:
-      {call_prep_summary}
-
-      Discovery Questions:
-      {discovery_questions}
+  params:
+    reply_to_uuid: "{email_uuid}"
+    email_body: "{personalized_follow_up}"
+NOTE: This sends a REAL email — always confirm with user first
 ```
 
 ### Step 10: Mid-Campaign Optimization

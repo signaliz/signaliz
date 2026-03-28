@@ -54,9 +54,8 @@ User Input (ICP criteria / CSV / Instantly list / Supabase query)
   |  Octave: email agents, call prep         |
   |  Blitz API: employee finder, enrichment  |
   |  Instantly: campaign create/update,      |
-  |    lead load, activate, analytics        |
-  |  Gmail: reply tracking, draft responses  |
-  |  GCal: schedule calls for HOT leads      |
+  |    lead load, activate, analytics,       |
+  |    reply management                      |
   |  -> Supabase (track campaigns)          |
   +------------------------------------------+
         |
@@ -64,16 +63,14 @@ User Input (ICP criteria / CSV / Instantly list / Supabase query)
   |  Instantly: warmup check, create, load,  |
   |    activate, analytics, reply management |
   |  Octave: email agents, call prep         |
-  |  Gmail: reply tracking                   |
-  |  GCal: schedule follow-ups               |
   |  Signaliz: governance pre-flight         |
+  |  -> Supabase (track campaigns)          |
   +------------------------------------------+
         |
   +-- Skill 04: Hygiene (periodic) ---------+
-  |  Signaliz: verify, blocklist             |
+  |  Signaliz: verify, blocklist, governance |
   |  Instantly: analytics, move_leads, sync  |
   |  Blitz API: email validation (SMTP)      |
-  |  Gmail: check for bounces/replies        |
   |  -> Supabase (update status)            |
   +------------------------------------------+
 ```
@@ -131,8 +128,6 @@ CREATE TABLE leads (
 | **Octave** (×2) | Company/person find, enrich (no emails), qualify, lookalike lists, persistent agents (email/call prep/enrich/qualify), knowledge base, email generation | Skills 00, 01, 02, 03, 05 | 100/query find, 1/sec enrich |
 | **Instantly** (×3) | Campaign CRUD, lead loading/moving, activation, email verification, analytics (campaign/daily/warmup), reply management, sender account management | All skills | 1,000 leads/bulk batch, 3× parallel verify |
 | **Blitz API** | Find work emails (LinkedIn→email), company/people search, company enrichment, domain↔LinkedIn lookup, email validation (SMTP) | Skills 00, 01, 03, 05 | 5 RPS, 5 concurrent |
-| **Gmail** | Search inbox for replies, read messages/threads, create draft responses | Skills 02, 04, 05 | — |
-| **Google Calendar** | Schedule calls/meetings, find availability, manage events | Skills 02, 05 | — |
 | **Supabase** | Central lead storage, state tracking, audit trail | All skills | 100 rows/INSERT batch |
 
 ---
@@ -171,11 +166,9 @@ All skills use consistent batching to prevent API errors:
 | Instantly warmup | `Instantly get_warmup_analytics` | 1/call | — | Inbox placement, spam rate |
 | Instantly verify stats | `Instantly get_verification_stats` | 1/call | — | List verification breakdown |
 | Instantly reply | `Instantly reply_to_email` | 1/call | — | Sends real email — requires confirmation |
-| Gmail search | `Gmail gmail_search_messages` | 20/page | — | Paginated inbox search |
-| Gmail read | `Gmail gmail_read_message/thread` | 1/call | — | Full message/thread content |
-| Gmail draft | `Gmail gmail_create_draft` | 1/call | — | Draft replies for review |
-| GCal schedule | `GCal gcal_create_event` | 1/call | — | Schedule follow-up calls |
-| GCal availability | `GCal gcal_find_my_free_time` | 1/call | — | Find open slots |
+| Signaliz blocklist | `Signaliz manage_blocklist` | bulk | — | Check/add/remove blocklist entries |
+| Signaliz governance | `Signaliz governance_preflight_check` | bulk | — | Pre-send validation (blocklist + domain suppression) |
+| Signaliz AI clean | `Signaliz ai_clean_*` | bulk | — | 5-step pipeline: upload → match → review → contracts → execute |
 | Supabase writes | `Supabase execute_sql` | 100 rows/INSERT | — | Sequential batches |
 
 ### Error Recovery Pattern

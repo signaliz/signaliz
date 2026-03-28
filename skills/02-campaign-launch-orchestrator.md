@@ -3,7 +3,7 @@
 **ID:** `signaliz-campaign-launcher`
 **Version:** 1.0.0
 **Max Batch:** 5,000 leads
-**MCP Dependencies:** Signaliz, Instantly (×3), Octave (×2), Gmail, Google Calendar, Supabase
+**MCP Dependencies:** Signaliz, Instantly (×3), Octave (×2), Blitz API, Supabase
 
 ---
 
@@ -336,12 +336,12 @@ CONFIG:
     campaign_id: "{campaign_id}"
 OUTPUT: sent, opens, clicks, replies, bounces, unsubscribes
 
-ACTION: Search Gmail for direct replies (outside Instantly)
-TOOL:   mcp__Gmail__gmail_search_messages
+ACTION: Read new replies
+TOOL:   mcp__Instantly__list_emails
 CONFIG:
-  q: "is:unread from:{lead_domain} subject:{campaign_subject}"
-  maxResults: 20
-OUTPUT: message list with IDs for reading
+  params:
+    campaign_id: "{campaign_id}"
+OUTPUT: email threads with reply content
 ```
 
 **If lead replies with interest:**
@@ -357,15 +357,13 @@ CONFIG:
   meetingContext: "Responded to outbound campaign — interested in learning more"
 OUTPUT: discovery questions, company brief, objection handling
 
-ACTION: Schedule follow-up call
-TOOL:   mcp__GCal__gcal_create_event
+ACTION: Flag lead as HOT in Supabase
+TOOL:   mcp__Supabase__execute_sql
 CONFIG:
-  event:
-    summary: "Discovery Call — {lead_name} @ {company}"
-    start: { dateTime: "{available_slot}" }
-    end: { dateTime: "{30min_later}" }
-    attendees: [{ email: "{lead_email}" }]
-    description: "{call_prep_summary}"
+  UPDATE {supabase_table} SET
+    tier = 'HOT',
+    updated_at = now()
+  WHERE email = '{lead_email}'
 ```
 
 ### Step 10: Mid-Campaign Adjustments

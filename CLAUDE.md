@@ -26,8 +26,6 @@ All skills are in `skills/`. See `skills/SKILLS.md` for the full index.
 | **Instantly** | 3 (`26122de2`, `88d6119d`, `b6d3162b`) — use in parallel for 3× throughput | Campaign CRUD, lead loading, activation, email verification, analytics, reply management, warmup monitoring |
 | **Blitz API** | 1 (`e78bb534` — docs search only, no direct API calls yet) | Find work emails, company/people search, enrichment, email validation (5 RPS) |
 | **Supabase** | 1 (`8f03796f`) | Central lead table — all skills read/write here |
-| **Gmail** | 1 (`b18e21ef`) | Search inbox for lead replies, read threads, create draft responses |
-| **Google Calendar** | 1 (`c56b192a`) | Schedule follow-up calls, find meeting times, check availability |
 
 ## Octave — Full Capability Reference
 
@@ -116,31 +114,51 @@ All skills are in `skills/`. See `skills/SKILLS.md` for the full index.
 | `manage_account_state` | Control warmup state |
 | `create_lead_list` / `list_lead_lists` | Lead list management |
 
-## Gmail — Capability Reference
+## Signaliz — Full Capability Reference
 
+Signaliz is the core pipeline engine. It handles email finding, verification, company signal enrichment, AI scoring, governance, and data cleaning. Most operations are async — submit a job, poll until complete.
+
+### Email Operations
 | Tool | Description |
 |---|---|
-| `gmail_search_messages` | Search inbox with Gmail query syntax (from:, subject:, is:unread, etc.) |
-| `gmail_read_message` | Read full email content by message ID |
-| `gmail_read_thread` | Read entire conversation thread |
-| `gmail_create_draft` | Create draft email or draft reply to thread |
-| `gmail_list_drafts` | List saved drafts |
-| `gmail_get_profile` | Get account info |
+| `verify_emails` | Batch verify up to 5,000 emails per call (async — returns `job_id`, poll with `check_job_status`) |
+| `find_and_verify_emails` | Find AND verify emails for contacts in bulk (async — returns `job_id`) |
+| `check_job_status` | Poll async job progress (page through results with `page_size`) |
 
-**Use cases in pipeline:** Track lead replies, read response content, draft personalized follow-ups.
-
-## Google Calendar — Capability Reference
-
+### Signal Enrichment & AI Scoring
 | Tool | Description |
 |---|---|
-| `gcal_create_event` | Schedule meetings, calls, follow-ups |
-| `gcal_find_meeting_times` | Find mutual availability with attendees |
-| `gcal_find_my_free_time` | Check own calendar for free slots |
-| `gcal_list_events` | View upcoming schedule |
-| `gcal_update_event` / `gcal_delete_event` | Modify/cancel events |
-| `gcal_respond_to_event` | Accept/decline invitations |
+| `execute_primitive` | Ad-hoc enrichment for ≤25 records — capabilities: `enrich_company_signals`, `custom_ai_prompt` |
+| `create_system` | Create a reusable pipeline with chained capabilities (input → enrich → score → output) |
+| `upload_data` | Upload lead/company data (CSV/JSON) as a list for system processing |
+| `run_system` | Execute a system pipeline on an uploaded list (1,000 rows/wave, 500 parallel) |
+| `get_run` | Poll system run status until completed |
 
-**Use cases in pipeline:** Schedule discovery calls with HOT leads, block time for follow-ups.
+### Governance & Compliance
+| Tool | Description |
+|---|---|
+| `manage_blocklist` | Check emails against workspace blocklist, add/remove entries |
+| `governance_preflight_check` | Pre-send validation: blocklist, email format, domain suppression |
+
+### Data Cleaning (AI Clean)
+| Tool | Description |
+|---|---|
+| `ai_clean_upload_data` | Upload raw data for AI-powered cleaning |
+| `ai_clean_match_destination` | Match fields to destination schema (Instantly, HubSpot, etc.) |
+| `ai_clean_review_mapping` | Review auto-detected field mappings |
+| `ai_clean_suggest_contracts` | Suggest data quality contracts (normalization rules) |
+| `ai_clean_execute_cleaning` | Execute cleaning with approved contracts |
+
+### AI Prompt (Custom Scoring/Classification)
+| Tool | Description |
+|---|---|
+| `custom_ai_prompt` | Run custom AI prompts on lead data — used for ICP scoring, segmentation, signal analysis. Supports `system_prompt`, `user_template`, `output_fields`, model selection. |
+
+**Key behaviors:**
+- `verify_emails` and `find_and_verify_emails` are async — always poll `check_job_status` every 15s
+- `run_system` processes in waves of 1,000 — for 5,000 leads, expect 5 sequential waves
+- `execute_primitive` is synchronous but limited to 25 records — use `create_system` + `run_system` for larger batches
+- `custom_ai_prompt` supports `output_fields` for structured JSON output (scores, categories, reasoning)
 
 ## Blitz API — Full Endpoint Reference
 
@@ -202,10 +220,13 @@ All skills are in `skills/`. See `skills/SKILLS.md` for the full index.
 
 ## How to Use
 
+This is an **agency tool** — we build and manage outbound campaigns for clients.
+
 1. Ensure Signaliz, Octave, Instantly, Blitz API, and Supabase MCP servers are connected
-2. Start with Skill 00 to source leads, OR upload/reference your lead data
+2. Start with Skill 00 to source leads, OR upload/reference client lead data
 3. Skills chain via Supabase: 00 → 01 → 03 → 05 (with 04 for maintenance)
 4. Each skill will guide you through steps with confirmation prompts
+5. Reply management uses Instantly's built-in reply tracking — no external email needed
 
 ## Key Constraints
 

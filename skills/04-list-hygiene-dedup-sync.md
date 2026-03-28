@@ -3,7 +3,7 @@
 **ID:** `signaliz-list-hygiene`
 **Version:** 1.0.0
 **Max Batch:** 5,000 leads
-**MCP Dependencies:** Signaliz, Instantly (×3), Blitz API, Gmail, Supabase
+**MCP Dependencies:** Signaliz, Instantly (×3), Blitz API, Supabase
 
 ---
 
@@ -168,12 +168,18 @@ CONFIG:
     list_id: "{list_id}"
 OUTPUT: valid, invalid, risky, unknown counts
 
-ACTION: Check for replies via Gmail (catch replies outside Instantly)
-TOOL:   mcp__Gmail__gmail_search_messages
+ACTION: Check for replies via Instantly
+TOOL:   mcp__Instantly__count_unread_emails
 CONFIG:
-  q: "is:unread subject:{campaign_subject}"
-  maxResults: 50
-OUTPUT: unread replies from leads
+  (no params)
+OUTPUT: unread reply count
+
+ACTION: Read reply threads if any
+TOOL:   mcp__Instantly__list_emails
+CONFIG:
+  params:
+    campaign_id: "{campaign_id}"
+OUTPUT: email threads with reply content
 ```
 
 **Decision matrix:**
