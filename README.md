@@ -1,198 +1,203 @@
 # Signaliz
 
-**Your GTM Data Layer — Enriched, Verified, Intelligent.**
+**The GTM data and Ops layer for AI-native teams.**
 
-Signaliz is a B2B data quality and enrichment platform purpose-built for go-to-market teams. It verifies emails, finds professional contacts, and enriches companies with real-time business signals — delivered through MCP, direct API, file upload UI, and Claude Code.
+Signaliz gives AI agents and GTM teams one place to find verified emails, verify deliverability, discover companies and people, detect company signals, run custom AI prompts, generate leads, orchestrate Ops Routines, resolve approvals, execute connected-app actions, manage ICPs and campaign books, enforce budgets and blocklists, and store durable agent memory.
 
-Messy in, clean out. Every record passes through data contracts and governance enforcement before it touches your CRM, sequencer, or system of record.
-
----
-
-## What Signaliz Does
-
-**Three battle-tested capabilities:**
-
-| Capability | What It Does | Input | Output |
-|---|---|---|---|
-| **Email Finding + Verification** | Find professional email addresses from name + company domain, verified on delivery | First name, last name, company domain | Verified email + deliverability status |
-| **Email Verification** | Check deliverability of existing email addresses at scale | Email addresses (up to 5,000 per batch) | Status per email: valid, catch-all, invalid, unknown |
-| **Company Signal Enrichment** | Discover hiring, funding, product launches, partnerships, leadership changes, and more | Company domain or name | Structured signal data with timestamps and sources |
-
-**Data governance built in:** Every record flows through Signaliz's enforcement layer — data contracts validate schema and quality, a dead letter queue catches failures, and blocklists suppress restricted domains automatically.
+Paid plans include API/MCP reads, companies, people, standard enrichment, and Ops workflows. Fresh enrichment credits are used only when Signaliz creates, verifies, or fetches new premium data.
 
 ---
 
-## How to Use Signaliz
+## What You Can Build
 
-Signaliz is available through four integration paths:
+- Find verified work emails for known contacts.
+- Verify deliverability for one email or thousands of emails.
+- Discover buying signals such as hiring, funding, product launches, partnerships, leadership changes, expansion, acquisitions, awards, regulatory events, and earnings.
+- Find B2B professionals, target accounts, local businesses, or outreach-ready leads.
+- Run custom AI prompts across records with structured output fields.
+- Upload lists and run governed Signaliz systems against them.
+- Create autonomous Ops Routines that work on a GTM goal over time.
+- Chain routines, stream results, emit events, and resolve approvals.
+- Connect apps, discover available actions, and execute app actions through Signaliz.
+- Manage budgets, blocklists, ICPs, campaign books, and durable agent memory.
 
-### 1. MCP (Model Context Protocol)
+---
 
-Connect Signaliz to Claude.ai, Claude Code, or any MCP-compatible AI agent. This is the primary integration — Signaliz acts as the default data quality checkpoint in your agent workflows.
+## Integration Surfaces
 
-**Claude.ai MCP endpoint:**
-```
-https://api.signaliz.com/functions/v1/signaliz-mcp?api_key=YOUR_API_KEY
-```
+| Surface | When to use it | Install |
+| --- | --- | --- |
+| REST API | Direct HTTP from any language. | Base URL: `https://api.signaliz.com/functions/v1` |
+| TypeScript SDK | Node.js and browser apps with typed helpers. | `npm install @signaliz/sdk` |
+| MCP Server | Claude Code, Claude Desktop, Cursor, Windsurf, Cline, and MCP-aware agents. | `npx -y @signaliz/mcp-server` |
+| CLI | Terminal-first Ops and automation. | `npm install -g @signaliz/cli` |
 
-Once connected, Claude can call Signaliz tools like `find_emails_with_verification`, `verify_emails`, `enrich_company_signals`, and `execute_primitive` directly in conversation.
+---
 
-### 2. Claude Code Plugin
+## MCP Quick Start
 
-Install the Signaliz plugin for Claude Code to use all capabilities from your terminal:
+Create a Signaliz API key from **Settings > Developer > API Access**, then add Signaliz to Claude Code:
 
 ```bash
-claude plugin install signaliz@claude-plugin-directory
+claude mcp add signaliz -e SIGNALIZ_API_KEY=sk_your_key -- npx -y @signaliz/mcp-server
 ```
 
-See the [claude-code-plugin](https://github.com/signaliz/claude-code-plugin) repo for setup, commands, and configuration.
+For Claude Desktop, Cursor, Windsurf, Cline, or another stdio MCP client:
 
-### 3. Claude.ai Skills
+```json
+{
+  "mcpServers": {
+    "signaliz": {
+      "command": "npx",
+      "args": ["-y", "@signaliz/mcp-server"],
+      "env": {
+        "SIGNALIZ_API_KEY": "sk_your_key"
+      }
+    }
+  }
+}
+```
 
-Install pre-built workflow skills that teach Claude exactly how to run Signaliz operations — including CSV parsing, batch management, error handling, and output formatting.
-
-See the [signaliz-skills](https://github.com/signaliz/signaliz-skills) repo for installable `.skill` files.
-
-### 4. Direct API
-
-Call Signaliz capabilities directly via REST API for production pipelines and custom integrations.
+Optional environment override:
 
 ```bash
-# Verify an email
-curl -X POST https://api.signaliz.com/functions/v1/verify-email \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"email": "jane@acme.com"}'
+SIGNALIZ_API_URL=https://api.signaliz.com/functions/v1
 ```
+
+Every MCP tool accepts `output_format` as `markdown` or `json`.
 
 ---
 
-## Repositories
+## Capability Index
 
-| Repo | Description |
-|---|---|
-| **[signaliz/signaliz](https://github.com/signaliz/signaliz)** | Main repo — documentation, platform overview, and roadmap |
-| **[signaliz/signaliz-skills](https://github.com/signaliz/signaliz-skills)** | Claude.ai skills for email finding, email verification, and company signal enrichment |
-| **[signaliz/claude-code-plugin](https://github.com/signaliz/claude-code-plugin)** | Claude Code plugin — MCP config, slash commands, and skill definitions for terminal use |
+### Email, Contact, and Company Enrichment
 
----
+| Tool | What it does |
+| --- | --- |
+| `find_contacts_with_email` | Finds contacts at a company and returns verified work emails. |
+| `find_emails_with_verification` | Finds and verifies one professional email address from a name, company domain, or LinkedIn URL. |
+| `verify_email` | Verifies one email address for deliverability. |
+| `enrich_company_signals` | Researches a company for structured signals and source-backed developments. |
+| `company_intelligence` | Runs AI-powered company research from websites, domains, LinkedIn URLs, and extra URLs. |
+| `execute_primitive` | Runs small synchronous jobs for email verification, email finding, signal enrichment, custom AI prompts, data cleaning, or HTTP requests. |
+| `generic_http_request` | Executes one custom HTTP request with headers, auth, body templates, variables, timeout, and response extraction. |
+| `custom_ai_prompt` | Runs a custom AI prompt over records with model selection, structured output, and optional Signaliz AI Search context. |
 
-## Skills
+### Batch Jobs
 
-Signaliz ships three Claude.ai skills that encode proven GTM workflows. Each skill handles CSV uploads and inline/conversational input, manages batching and pagination automatically, and outputs clean files with summary stats.
+| Tool | What it does |
+| --- | --- |
+| `find_and_verify_emails` | Finds and verifies emails for up to 5,000 contacts asynchronously. |
+| `verify_emails` | Verifies up to 5,000 emails asynchronously. |
+| `enrich_company_signals_batch` | Enriches signals for up to 5,000 companies asynchronously. |
+| `batch_http_request` | Executes up to 5,000 HTTP requests asynchronously. |
+| `check_job_status` | Polls async jobs, reports progress, and retrieves paginated results. |
 
-### signaliz-find-verified-emails
+### Lead and Account Discovery
 
-Turn a list of contacts (name + company) into verified email addresses. Accepts CSV uploads or inline data, routes to the optimal tool based on batch size, handles field mapping and domain normalization.
+| Tool | What it does |
+| --- | --- |
+| `generate_leads` | Finds B2B professionals with company data and verified emails for outreach-ready lead lists. |
+| `generate_local_leads` | Finds local businesses and verified contact emails from local search. |
+| `find_people_blitz` | Finds professional profiles without verified emails for research and list building. |
+| `find_companies_blitz` | Finds company records for account discovery, market sizing, and TAM research. |
 
-```
-"Find emails for the VP Sales at these 20 companies" → researches names, batches through Signaliz, outputs verified CSV
-```
+### Lists, Systems, and Pipeline Runs
 
-### signaliz-verify-emails
+| Tool | What it does |
+| --- | --- |
+| `list_capabilities` | Lists available Signaliz capabilities, schemas, categories, and billing notes. |
+| `upload_data` | Uploads inline records, public CSV URLs, Google Sheets URLs, or Google Drive share URLs as workspace lists. |
+| `list_systems` | Lists saved Signaliz automation systems in the workspace. |
+| `get_system` | Gets a saved system's phases, required inputs, and configuration. |
+| `create_system` | Creates a saved automation system from a plain-English description. |
+| `run_system` | Runs a saved system using inline data, a saved list, the latest workspace list, or prior run data. |
+| `get_run` | Gets one system run's status and results. |
+| `list_runs` | Lists recent system runs with status, timing, and summaries. |
 
-Verify deliverability of existing email addresses. Handles deduplication, normalization, async job polling, and outputs three files: clean (safe to send), removed (invalid), and full audit trail.
+### Ops Routines as Agents
 
-```
-"Verify these 300 emails before I load them into Instantly" → batch verifies, classifies results, outputs sorted CSVs
-```
+| Tool | What it does |
+| --- | --- |
+| `create_routine` | Creates a goal-driven Ops Routine with cadence, policy guardrails, wake events, and output sinks. |
+| `list_routines` | Lists Ops Routines by status. |
+| `get_routine` | Gets full routine details, policy, sinks, recent ticks, and outcomes. |
+| `update_routine` | Updates routine name, goal, cadence, status, policy, sinks, or wake events. |
+| `run_routine_now` | Triggers an Ops Routine immediately with an optional one-off instruction. |
+| `delete_routine` | Soft-archives or permanently deletes a routine after confirmation. |
+| `get_routine_ticks` | Lists historical routine ticks with status, record counts, credits, and errors. |
+| `get_tick_items` | Fetches records produced by a specific tick. |
+| `get_last_tick_items` | Fetches records from the latest successful tick. |
+| `get_routine_results` | Agent-friendly helper that combines routine metadata with latest produced items. |
+| `agent_workflow` | Creates, activates, triggers, optionally waits for, and optionally cleans up a one-shot Ops Routine. |
+| `stream_routine_results` | Returns an SSE endpoint for real-time item events from a running routine tick. |
+| `chain_routines` | Chains two routines so upstream output feeds downstream seed items. |
+| `get_chain_status` | Shows chained routine execution status and per-stage item counts. |
+| `emit_event` | Emits an event that can wake routines subscribed through `wake_on_events`. |
 
-### signaliz-company-signals
+### Approvals, Apps, Books, and Workspace Controls
 
-Enrich companies with structured business signals — hiring trends, funding activity, product launches, partnerships, leadership changes, and more. Supports signal type filtering and custom research prompts.
-
-```
-"What are these 50 companies up to? Focus on hiring and funding signals" → enriches all 50, outputs CSV with signal breakdown
-```
-
-**Install a skill:** Download the `.skill` file from [signaliz-skills](https://github.com/signaliz/signaliz-skills) and add it to your Claude.ai skills.
-
----
-
-## Architecture
-
-Signaliz is built on:
-
-- **Supabase** — Database, auth, and edge functions
-- **Trigger.dev** — Async job orchestration with concurrency management
-- **Lovable** — Frontend UI
-- **MCP Server** — Supabase edge function serving the Model Context Protocol
-
-The platform is designed as an enforcement layer between AI agents and systems of record. Instead of building traditional OAuth push integrations, Signaliz sits at the MCP checkpoint — every agent workflow that touches contact data, email sends, or CRM writes passes through Signaliz's data contracts first.
-
-```
-AI Agent / Claude / Workflow
-        ↓
-   Signaliz MCP
-        ↓
-  ┌─────────────────────┐
-  │  Data Contracts      │  ← Schema validation
-  │  Blocklist Check     │  ← Suppression enforcement
-  │  Dead Letter Queue   │  ← Failed record capture
-  └─────────────────────┘
-        ↓
-  Enrichment / Verification
-        ↓
-  CRM · Sequencer · System of Record
-```
-
----
-
-## Quick Start
-
-### 1. Get an API Key
-
-Sign up at [signaliz.com](https://signaliz.com) and generate an API key from your workspace settings.
-
-### 2. Connect to Claude.ai
-
-Go to Claude.ai Settings → Connected Apps → Add MCP Server:
-
-```
-URL: https://api.signaliz.com/functions/v1/signaliz-mcp?api_key=YOUR_API_KEY
-```
-
-### 3. Try It
-
-Ask Claude:
-
-- *"Verify this email: jane@acme.com"*
-- *"Find the email for Sarah Chen at Notion"*
-- *"What signals do you see for stripe.com?"*
+| Tool group | Tools |
+| --- | --- |
+| Approvals and feedback | `approvals_list`, `approvals_decide`, `set_item_feedback` |
+| App connections and actions | `list_connections`, `list_available_connectors`, `list_connectors`, `connect_app`, `discover_actions`, `execute_connection_action`, `list_connection_audit_log` |
+| GTM books and ICPs | `quickstart_gtm_book`, `list_books`, `book_roll_up`, `list_icps`, `get_icp`, `import_icps_from_octave` |
+| Workspace controls | `budget_get_status`, `budget_set_limit`, `manage_blocklist`, `write_agent_memory`, `query_agent_memory`, `list_output_sinks` |
 
 ---
 
-## Key Tools Reference
+## Async Pattern
 
-| Tool | Use For | Max Batch |
-|---|---|---|
-| `find_emails_with_verification` | Find one email at a time from name + domain | 1 |
-| `execute_primitive` | Batch find emails, verify emails, or enrich signals | 25 |
-| `verify_emails` | Batch verify existing emails (async) | 5,000 |
-| `enrich_company_signals` | Batch company signal enrichment (async) | 5,000 |
-| `check_job_status` | Poll async job results | — |
-| `create_system` + `run_system` | Build and run multi-step pipelines | 50,000+ |
+Large jobs are async so MCP clients and API callers do not time out:
 
-**Async jobs** (`verify_emails`, `enrich_company_signals`) return a `job_id` immediately. Poll with `check_job_status` until `status: completed`, then paginate results with `page_size: 500`.
+1. Submit a batch tool request.
+2. Receive a `job_id`.
+3. Poll `check_job_status` until the job completes.
+4. Read paginated results, or receive a webhook if you supplied callback fields.
 
 ---
 
-## Troubleshooting
+## Pricing and Billing Model
 
-| Issue | Fix |
-|---|---|
-| All tools fail at once | Disconnect and reconnect the MCP in Claude settings (Supabase edge function cold start) |
-| `execute_primitive` timeout | Reduce batch size to 10-15 records |
-| Job stuck at "queued" | Wait 30s and re-poll. If stuck >2min, resubmit |
-| `check_job_status` shows max 5 results | Paginate with `page_size=5` through all pages |
-| 502/503 errors | Wait 5s and retry — edge function cold start |
+Paid plans include API/MCP reads, companies, people, standard enrichment, and Ops workflows. Free is for exploration.
+
+Fresh enrichment credits are used only when Signaliz creates, verifies, or fetches new premium data:
+
+- Fresh verified email discovery
+- Live email verification
+- Fresh premium enrichment
+- Signaliz-hosted AI
+
+BYO OpenRouter routes model spend to your key and does not use Signaliz-hosted AI credits.
+
+Fresh enrichment throughput:
+
+| Plan | Fresh enrichments/min | Included monthly fresh enrichment credits |
+| --- | ---: | ---: |
+| Free | 5 | 500 starter credits |
+| Builder | 15 | 25,000 |
+| Team | 30 | 50,000 |
+| Agency | 60 | 100,000 |
+
+Ordinary API/MCP reads are not throttled by the fresh-enrichment limiter.
 
 ---
 
-## License
+## Safety Model
 
-See individual repository LICENSE files.
+Read-only enrichment and discovery tools do not mutate your external systems. Tools that upload data, create or run systems, connect apps, execute app actions, update blocklists, approve work, or delete routines can change Signaliz workspace resources or connected systems and should be used with your normal approval controls.
 
 ---
 
-**Built in Phoenix, AZ by [Signaliz](https://signaliz.com)**
+## Links
+
+- Website: https://signaliz.com
+- API docs: https://signaliz.com/api-docs
+- OpenAPI spec: https://signaliz.com/openapi.json
+- MCP docs: https://signaliz.com/mcp-docs
+- NPM package: https://www.npmjs.com/package/@signaliz/mcp-server
+- Hosted remote MCP endpoint: https://api.signaliz.com/functions/v1/signaliz-mcp
+
+---
+
+**Built in Phoenix, AZ by [Signaliz](https://signaliz.com).**
