@@ -2,7 +2,7 @@
 
 **The GTM data and Ops layer for AI-native teams.**
 
-Signaliz gives AI agents and GTM teams one place to find verified emails, verify deliverability, discover companies and people, detect company signals, run custom AI prompts, generate leads, orchestrate Ops Routines, resolve approvals, execute connected-app actions, manage ICPs and campaign books, enforce budgets and blocklists, and store durable agent memory.
+Signaliz gives AI agents and GTM teams one place to find verified emails, verify deliverability, discover companies and people, detect company signals, run custom AI prompts, generate leads, build approval-gated campaigns, orchestrate Ops Routines, resolve approvals, execute connected-app actions, manage ICPs and campaign books, enforce budgets and blocklists, and store durable campaign memory.
 
 Paid plans include API/MCP reads, companies, people, standard enrichment, and Ops workflows. Fresh enrichment credits are used only when Signaliz creates, verifies, or fetches new premium data.
 
@@ -16,9 +16,12 @@ Paid plans include API/MCP reads, companies, people, standard enrichment, and Op
 - Find B2B professionals, target accounts, local businesses, or outreach-ready leads.
 - Run custom AI prompts across records with structured output fields.
 - Upload lists and run governed Signaliz systems against them.
+- Scope campaign briefs into ICP, copy, provider, approval, and dry-run build plans.
+- Build campaigns behind explicit spend and delivery approval gates.
 - Create autonomous Ops Routines that work on a GTM goal over time.
 - Chain routines, stream results, emit events, and resolve approvals.
 - Connect apps, discover available actions, and execute app actions through Signaliz.
+- Import Instantly history, query private campaign memory, and recommend the next GTM experiment.
 - Manage budgets, blocklists, ICPs, campaign books, and durable agent memory.
 
 ---
@@ -101,6 +104,20 @@ Every MCP tool accepts `output_format` as `markdown` or `json`.
 | `generate_local_leads` | Finds local businesses and verified contact emails from local search. |
 | `find_people_blitz` | Finds professional profiles without verified emails for research and list building. |
 | `find_companies_blitz` | Finds company records for account discovery, market sizing, and TAM research. |
+
+### Campaign Memory and Builder
+
+| Tool | What it does |
+| --- | --- |
+| `ingest_instantly_history` | Imports historical Instantly campaigns, leads, replies, and outcomes into private campaign memory. |
+| `query_campaign_memory` | Searches private workspace memory and the read-only CMM seed corpus for ICP, copy, provider, and outcome lessons. |
+| `scope_campaign` | Turns a GTM campaign request into ICP, copy thesis, provider chain, approval policy, and dry-run build arguments. |
+| `save_campaign_brief` | Persists a campaign brief or GTM experiment object into private workspace memory. |
+| `build_campaign` | Launches an approval-gated campaign build; use dry runs first and require explicit spend confirmation for real work. |
+| `get_campaign_build_status` | Polls campaign build progress across acquisition, signals, qualification, copy, and delivery phases. |
+| `get_campaign_build_rows` | Retrieves campaign build rows for review, approval, or agent-side routing. |
+| `approve_campaign_delivery` | Approves external delivery such as webhook posts or loading approved leads into Instantly. |
+| `recommend_next_experiment` | Recommends the next private GTM experiment from campaign memory and outcomes. |
 
 ### Lists, Systems, and Pipeline Runs
 
@@ -197,6 +214,7 @@ Read-only enrichment and discovery tools do not mutate your external systems. To
 - MCP docs: https://signaliz.com/mcp-docs
 - NPM package: https://www.npmjs.com/package/@signaliz/mcp-server
 - Hosted remote MCP endpoint: https://api.signaliz.com/functions/v1/signaliz-mcp
+- Public MCP manifest: https://github.com/signaliz/signaliz-mcp
 
 ---
 
