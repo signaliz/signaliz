@@ -193,6 +193,8 @@ See [skills/SKILLS.md](./skills/SKILLS.md) for the full skills index, execution 
 | [signaliz/claude-code-plugin](https://github.com/signaliz/claude-code-plugin) | Claude Code plugin resources. |
 | [signaliz/advanced-signaliz-workflows](https://github.com/signaliz/advanced-signaliz-workflows) | Advanced Signaliz workflow examples. |
 
+Admin handoff for org profile setup, repo metadata, and cross-repo PRs: [docs/org-admin-handoff.md](./docs/org-admin-handoff.md).
+
 ## Safety Model
 
 Signaliz separates read-only planning from spendful or mutating work. Discovery, enrichment reads, dry-runs, tool discovery, status checks, and result reads are safe to run before approval. Spendful enrichment, campaign launch, external delivery, connected-app writes, blocklist updates, and destructive routine actions require explicit confirmation in the relevant surface.
